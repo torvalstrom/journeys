@@ -31,11 +31,46 @@ class SimplePlaceResolver {
         $platform = $this->db->getDatabasePlatform();
         $class = get_class($platform);
         if (stripos($class, 'mysql') !== false || stripos($class, 'mariadb') !== false) {
-            return self::GIS_TYPE_MYSQL;
+            return $this->hasMysqlGis() ? self::GIS_TYPE_MYSQL : self::GIS_TYPE_NONE;
         } elseif (stripos($class, 'postgres') !== false) {
-            return self::GIS_TYPE_POSTGRES;
+            return $this->hasPostgis() ? self::GIS_TYPE_POSTGRES : self::GIS_TYPE_NONE;
         }
         return self::GIS_TYPE_NONE;
+    }
+
+    /**
+     * Whether the PostGIS extension is actually installed. A PostgreSQL
+     * platform does NOT imply PostGIS: on a plain postgres server the spatial
+     * queries in queryPoint() throw on every single point, which both floods
+     * the log (one error per photo per cron run) and wastes a doomed query
+     * before the fallback kicks in. Probing here lets us return GIS_TYPE_NONE
+     * and go straight to the precomputed per-file place map
+     * (oc_memories_places) instead.
+     */
+    private function hasPostgis(): bool {
+        try {
+            return $this->db->executeQuery(
+                "SELECT 1 FROM pg_extension WHERE extname = 'postgis'"
+            )->fetchOne() !== false;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Whether MySQL/MariaDB spatial functions are usable. Built-in since
+     * MySQL 5.7 / MariaDB 10.2, but probe rather than assume so a stripped
+     * build also falls back cleanly instead of erroring per point.
+     */
+    private function hasMysqlGis(): bool {
+        try {
+            $this->db->executeQuery(
+                "SELECT ST_Contains(ST_GeomFromText('POLYGON((0 0,0 1,1 1,1 0,0 0))'), ST_GeomFromText('POINT(0.5 0.5)'))"
+            )->fetchOne();
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**
