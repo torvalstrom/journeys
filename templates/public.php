@@ -38,7 +38,9 @@
 	<?php endif; ?>
 
 	<?php if (count($_['entries']) > 1): ?>
-		<input type="checkbox" id="jd-order" class="jd-order-cb">
+		<!-- Checked by default: a travel diary reads newest-first, like the editor
+		     and the journal list. The label names the CURRENT order. -->
+		<input type="checkbox" id="jd-order" class="jd-order-cb" checked>
 		<div class="jd-sort">
 			<label for="jd-order" class="jd-order-label">
 				<span class="jd-order-text jd-order-text--asc">↑ <?php p($l->t('Oldest first')); ?></span>
@@ -172,6 +174,10 @@ body > footer { display: none; }
 .jd-photo figcaption { font-size: .85em; color: var(--color-text-maxcontrast, #767676); margin-top: 4px; }
 .jd-empty, .jd-pub-footer { text-align: center; color: var(--color-text-maxcontrast, #888); }
 .jd-pub-footer { margin-top: 40px; font-size: .85em; }
+/* NC core pins any public-page <footer> to the viewport bottom
+   (`#body-public footer { position: fixed; bottom: 0 }`), which parked our
+   credit line on top of the map. Out-specify it with the id + element. */
+#body-public footer.jd-pub-footer { position: static; width: auto; }
 @media (max-width: 600px) {
 	.jd-inner { padding: 16px 14px 56px; }
 	.jd-pub-header { margin-bottom: 24px; }

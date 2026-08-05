@@ -204,8 +204,14 @@ export default {
 	computed: {
 		sortedEntries() {
 			// Always newest day first; copy so we don't mutate the loaded array.
+			// Same-day entries fall back to sortOrder then id, also descending, so
+			// the most recently added one reads first (matches the public page).
 			return [...(this.currentJournal?.entries ?? [])]
-				.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+				.sort((a, b) => {
+					if (a.date !== b.date) return a.date < b.date ? 1 : -1
+					if (a.sortOrder !== b.sortOrder) return b.sortOrder - a.sortOrder
+					return b.id - a.id
+				})
 		},
 		addDayLabel() {
 			return this.newDay === todayStr()

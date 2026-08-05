@@ -39,6 +39,13 @@ Album titles are generated from the **resolved place name** and the **date range
 
 ]]></description>
   <changelog><![CDATA[
+  <h3>0.29.0 (2026-08-05)</h3>
+    <ul>
+      <li><b>Journals public page:</b> The timeline now starts with the <b>newest day first</b>, matching the editor. The oldest/newest toggle still flips it.</li>
+      <li><b>Journals list:</b> A journal that has no day entries yet no longer sinks to the bottom of the list — journals are ordered by their travel dates, falling back to when they were created, so a freshly created journal appears at the top.</li>
+      <li><b>Journals editor:</b> Several entries on the same date now read newest-added first, consistent with the public page.</li>
+      <li><b>Fixed:</b> On the public journal page the "Shared from a Journeys travel diary" line was pinned to the bottom of the window and covered the travel map. It now sits at the end of the page.</li>
+    </ul>
   <h3>0.28.1 (2026-07-09)</h3>
     <ul>
       <li><b>Fixed:</b> Nextcloud 34 clustering crashed with <code>Call to undefined method OC\Server::getDatabaseConnection()</code>. Database access now uses a dependency-injected <code>IDBConnection</code> instead of the server-container getter that Nextcloud 34 removed.</li>
@@ -442,7 +449,7 @@ Album titles are generated from the **resolved place name** and the **date range
   ]]></changelog>
   <licence>agpl</licence>
   <author mail="thrillfall@disroot.org">thrillfall</author>
-  <version>0.28.1</version>
+  <version>0.29.0</version>
   <namespace>Journeys</namespace>
   <category>integration</category>
   <category>multimedia</category>

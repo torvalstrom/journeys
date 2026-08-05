@@ -42,7 +42,7 @@ class JournalService {
         return (int)$qb->getLastInsertId();
     }
 
-    /** @return Journal[] owned + shared-with-me, newest first */
+    /** @return Journal[] owned + shared-with-me, newest first (empty journals included) */
     public function listJournals(string $userId): array {
         $ids = $this->memberJournalIds($userId);
         $qb = $this->db->getQueryBuilder();
@@ -50,9 +50,12 @@ class JournalService {
         if ($ids) {
             $or->add($qb->expr()->in('id', $qb->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
         }
+        // Order by an effective date: a journal with no entries yet has a NULL
+        // start_date, which sorts LAST in DESC — so a freshly created journal
+        // would drop to the bottom of the list instead of the top.
         $qb->select('*')->from('journeys_journals')
             ->where($or)
-            ->orderBy('start_date', 'DESC')
+            ->orderBy($qb->createFunction('COALESCE(start_date, created_at)'), 'DESC')
             ->addOrderBy('id', 'DESC');
         $rows = $qb->executeQuery()->fetchAll();
         return array_map(static fn(array $r) => Journal::fromRow($r), $rows);

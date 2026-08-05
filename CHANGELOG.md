@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.29.0] - 2026-08-05
+### Changed
+- Journals public page: the timeline defaults to **newest day first** (the oldest/newest toggle still flips it), matching the editor.
+- Journals list: order by effective date `COALESCE(start_date, created_at) DESC` — a journal with no entries has a NULL `start_date`, which sorts last in `DESC`, so freshly created journals used to drop to the bottom of the list.
+- Journals editor: same-day entries tiebreak on `sortOrder`/`id` descending, so the most recently added one reads first (matches the public page).
+### Fixed
+- Journals public page: the footer credit line was pinned to the viewport bottom (NC core styles any public-page `<footer>` as `position: fixed`) and covered the travel map.
+- Tests: `ImageFetcherTest` errored since 0.28.1 (constructed `ImageFetcher` with 0 of its 2 injected dependencies). It requires a live DB, so it is now explicitly skipped and the unit suite is green again.
+
 ## [0.28.1] - 2026-07-09
 ### Fixed
 - Nextcloud 34: clustering crashed with `Call to undefined method OC\Server::getDatabaseConnection()`. `ImageFetcher` now receives an injected `IDBConnection` instead of the server-container getter that NC 34 removed.
