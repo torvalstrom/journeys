@@ -69,6 +69,29 @@ else
   echo "  (DB_CONTAINER unset — skipping owner-preservation DB assertions)"
 fi
 
+echo "== library consent gates the collaborator's photos =="
+# The member's photos must be invisible to the owner until the member consents,
+# and only within the journal's date window.
+MFID=$(db "SELECT m.fileid FROM oc_memories m
+             JOIN oc_filecache f ON f.fileid=m.fileid
+             JOIN oc_storages s ON s.numeric_id=f.storage
+             JOIN oc_mimetypes mt ON mt.id=f.mimetype
+            WHERE s.id='home::$MU' AND mt.mimetype LIKE 'image/%' AND DATE(m.datetaken)='2026-06-03' LIMIT 1;")
+[ "$(ocode -u "$OU:$OP" "${H[@]}" -X POST -H 'Content-Type: application/json' -d '{"shared":true}' "$APP/journals/$JOURNAL/library-consent")" = "200" ] \
+  && ok "member of a journal can set their own consent" || no "consent rejected for a member"
+owner -H 'Content-Type: application/json' -X POST -d '{"shared":false}' "$APP/journals/$JOURNAL/library-consent" >/dev/null
+
+if [ -n "$MFID" ]; then
+  [ "$(ocode -u "$OU:$OP" "${H[@]}" "$APP/journals/$JOURNAL/library-photo/$MFID")" = "404" ] && ok "library photo denied without consent" || no "library photo served without consent"
+  member -H 'Content-Type: application/json' -X POST -d '{"shared":true}' "$APP/journals/$JOURNAL/library-consent" >/dev/null
+  [ "$(ocode -u "$OU:$OP" "${H[@]}" "$APP/journals/$JOURNAL/library-photo/$MFID")" = "200" ] && ok "library photo served after consent" || no "library photo still denied after consent"
+  owner "$APP/journals/$JOURNAL/day-photos?date=2026-06-03" | jq_ "[p['ownerUid'] for p in d['photos']]" | grep -q "$MU" && ok "picker lists the member's photos" || no "picker missing the member's photos"
+  member -H 'Content-Type: application/json' -X POST -d '{"shared":false}' "$APP/journals/$JOURNAL/library-consent" >/dev/null
+  [ "$(ocode -u "$OU:$OP" "${H[@]}" "$APP/journals/$JOURNAL/library-photo/$MFID")" = "404" ] && ok "revoking consent denies again" || no "still served after revoke"
+else
+  echo "  SKIP: member has no indexed image on the entry date"
+fi
+
 echo "== removeMember revokes access =="
 owner -X DELETE "$APP/journals/$JOURNAL/members/user/$MU" >/dev/null
 [ "$(ocode -u "$MU:$MP" "${H[@]}" "$APP/journals/$JOURNAL")" = "404" ] && ok "after removeMember -> 404" || no "still has access"

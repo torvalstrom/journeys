@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.31.0] - 2026-08-06
+### Added
+- Journals: **shared photo libraries**. Any member of a journal can switch on "Let the others pick from my photos"; from then on the other members' day picker also lists that member's photos and can attach them. Consent is per journal, self-service (you can only set your own), and revocable — revoking hides the library again but keeps photos already attached.
+- The exposure bound of a consent is the journal's date window: only the consenting user's photos taken between the journal's first and last entry date are listed, previewable or attachable. Enforced on all three surfaces (`journalDayPhotos`, `libraryPhoto`, `setEntryPhotos`), plus the existing member check — a non-member gets 404 everywhere.
+- New endpoints: `POST /diary/journals/{id}/library-consent`, `GET /diary/journals/{id}/day-photos`, `GET /diary/journals/{id}/library-photo/{fileid}` (previews a not-yet-attached photo under its owner's storage; `/core/preview` only serves your own files).
+- DB migration `Version0502Date20260806`: `journeys_journal_consents`, keyed on `(journal_id, user_id)` rather than the membership row, so users who have access via a group can consent too. Rows are removed with the journal and on account deletion.
+### Changed
+- Journals editor: the collaborators box is visible to every member (it hosts the consent switch); membership management stays owner-only. The picker groups tiles by contributor and labels foreign ones.
+
 ## [0.30.0] - 2026-08-06
 ### Changed
 - Journals: an entry's photos are stored in **capture-time order** — `setEntryPhotos` merge sorts the whole selection by `datetaken` (new `taken_at` column, cached from the Memories index) instead of submission order, so a collaborator's photos interleave into the day's timeline instead of being appended after everyone else's. Photos Memories has no capture time for keep their submitted order and go last.

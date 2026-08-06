@@ -43,27 +43,43 @@
 				</template>
 			</header>
 
-			<div v-if="currentJournal.isOwner" class="members">
+			<div class="members">
 				<button class="members__toggle" @click="membersOpen = !membersOpen">
 					<span class="members__caret">{{ membersOpen ? '▾' : '▸' }}</span>
-					{{ t('journeys', 'Collaborators') }} ({{ members.length }})
+					{{ t('journeys', 'Collaborators') }}<span v-if="currentJournal.isOwner"> ({{ members.length }})</span>
 				</button>
 				<div v-show="membersOpen" class="members__body">
-					<div class="members__list">
-						<span v-for="m in members" :key="m.type + m.id" class="member-chip">
-							{{ m.id }}<small class="member-chip__type">{{ m.type }}</small>
-							<button title="remove" @click="removeMember(m)">✕</button>
-						</span>
-						<span v-if="members.length === 0" class="members__empty">{{ t('journeys', 'Only you. Add people or groups to collaborate.') }}</span>
-					</div>
-					<div class="members__add">
-						<input v-model="shareeQuery" class="members__input"
-							:placeholder="t('journeys', 'Add a user or group…')" @input="searchSharees">
-						<ul v-if="shareeResults.length" class="sharee-results">
-							<li v-for="s in shareeResults" :key="s.type + s.id" @click="addMember(s)">
-								{{ s.label }} <em>{{ s.type }}</em>
-							</li>
-						</ul>
+					<template v-if="currentJournal.isOwner">
+						<div class="members__list">
+							<span v-for="m in members" :key="m.type + m.id" class="member-chip">
+								{{ m.id }}<small class="member-chip__type">{{ m.type }}</small>
+								<button title="remove" @click="removeMember(m)">✕</button>
+							</span>
+							<span v-if="members.length === 0" class="members__empty">{{ t('journeys', 'Only you. Add people or groups to collaborate.') }}</span>
+						</div>
+						<div class="members__add">
+							<input v-model="shareeQuery" class="members__input"
+								:placeholder="t('journeys', 'Add a user or group…')" @input="searchSharees">
+							<ul v-if="shareeResults.length" class="sharee-results">
+								<li v-for="s in shareeResults" :key="s.type + s.id" @click="addMember(s)">
+									{{ s.label }} <em>{{ s.type }}</em>
+								</li>
+							</ul>
+						</div>
+					</template>
+
+					<div class="consent" :class="{ 'consent--only': !currentJournal.isOwner }">
+						<NcCheckboxRadioSwitch type="switch" :checked="!!currentJournal.myLibraryShared"
+							@update:checked="setLibraryConsent">
+							{{ t('journeys', 'Let the others pick from my photos') }}
+						</NcCheckboxRadioSwitch>
+						<p class="consent__hint">
+							{{ consentHint }}
+						</p>
+						<p v-if="otherContributors.length" class="consent__sharers">
+							{{ t('journeys', 'Sharing their photos:') }}
+							<span v-for="c in otherContributors" :key="c.uid" class="member-chip">{{ c.label }}</span>
+						</p>
 					</div>
 				</div>
 			</div>
@@ -134,7 +150,8 @@
 					<div v-for="p in picker.photos" :key="p.fileid"
 						class="picker__item" :class="{ selected: picker.selected[p.fileid] }"
 						@click="togglePick(p.fileid)">
-						<img :src="previewUrl(p.fileid)" alt="" loading="lazy">
+						<img :src="pickerUrl(p)" alt="" loading="lazy">
+						<span v-if="!p.isMine" class="picker__owner">{{ p.ownerLabel }}</span>
 						<span v-if="picker.selected[p.fileid]" class="picker__check">✓</span>
 					</div>
 				</div>
@@ -166,6 +183,7 @@ import { generateUrl } from '@nextcloud/router'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
 import NcModal from '@nextcloud/vue/dist/Components/NcModal.js'
 import NcLoadingIcon from '@nextcloud/vue/dist/Components/NcLoadingIcon.js'
 import NcEmptyContent from '@nextcloud/vue/dist/Components/NcEmptyContent.js'
@@ -181,7 +199,7 @@ function todayStr() {
 
 export default {
 	name: 'DiaryApp',
-	components: { NcButton, NcModal, NcLoadingIcon, NcEmptyContent },
+	components: { NcButton, NcCheckboxRadioSwitch, NcModal, NcLoadingIcon, NcEmptyContent },
 	data() {
 		return {
 			loading: true,
@@ -218,11 +236,38 @@ export default {
 				? t('journeys', 'Add today')
 				: t('journeys', 'Add day')
 		},
+		otherContributors() {
+			return (this.currentJournal?.libraryContributors ?? []).filter(c => !c.isMe)
+		},
+		consentHint() {
+			const j = this.currentJournal
+			return j?.startDate && j?.endDate
+				? t('journeys', 'They can browse your photos taken between {from} and {to}, and add them to this journal.')
+					.replace('{from}', j.startDate).replace('{to}', j.endDate)
+				: t('journeys', 'They can browse your photos from the journal’s days once it has entries.')
+		},
 	},
 	methods: {
 		previewUrl(fileid) {
-			// Used by the day picker — shows the viewer's OWN library photos.
 			return generateUrl('/core/preview') + '?fileId=' + fileid + '&x=256&y=256&a=1'
+		},
+		pickerUrl(photo) {
+			// /core/preview only serves your own files, so a collaborator's photo
+			// goes through the journal endpoint that resolves under its owner.
+			return photo.isMine
+				? this.previewUrl(photo.fileid)
+				: generateUrl('/apps/journeys/diary/journals/' + this.currentJournal.id + '/library-photo/' + photo.fileid)
+		},
+		async setLibraryConsent(shared) {
+			this.$set(this.currentJournal, 'myLibraryShared', shared)
+			try {
+				const { data } = await axios.post(API + '/journals/' + this.currentJournal.id + '/library-consent', { shared })
+				this.$set(this.currentJournal, 'myLibraryShared', data.myLibraryShared)
+				this.$set(this.currentJournal, 'libraryContributors', data.libraryContributors)
+			} catch (e) {
+				this.$set(this.currentJournal, 'myLibraryShared', !shared)
+				showError(this.t('journeys', 'Could not change photo sharing'))
+			}
 		},
 		entryPhotoUrl(fileid) {
 			// Attached entry photos may belong to other collaborators; serve via
@@ -372,12 +417,12 @@ export default {
 			this.persistPhotos(entry)
 		},
 		async openPicker(entry) {
-			// The picker only offers the CURRENT user's own photos for that day.
-			// Other users' (and other days') photos already on the entry are
-			// preserved on save — they're just not shown here.
+			// Offers the current user's own photos for that day plus those of any
+			// member who shared their library. Photos already on the entry from
+			// other days are preserved on save — they're just not shown here.
 			this.picker = { open: true, loading: true, entry, photos: [], selected: {} }
 			try {
-				const { data } = await axios.get(API + '/day-photos', { params: { date: entry.date } })
+				const { data } = await axios.get(API + '/journals/' + this.currentJournal.id + '/day-photos', { params: { date: entry.date } })
 				this.picker.photos = data.photos
 			} catch (e) { showError(this.t('journeys', 'Could not load photos')) }
 			const attached = new Set(entry.photos.map(p => p.fileid))
@@ -429,7 +474,8 @@ export default {
 .journal-title-input { flex: 1; font-size: 1.3em; font-weight: 600; border: none;
 	border-bottom: 2px solid transparent; background: transparent;
 	&:focus { border-bottom-color: var(--color-primary-element); outline: none; } }
-.members { margin-bottom: 16px; border: 1px solid var(--color-border); border-radius: 8px; }
+.members { margin-bottom: 16px; border: 1px solid var(--color-border); border-radius: 8px;
+	background: var(--color-main-background); }
 .members__toggle { width: 100%; text-align: left; background: none; border: none; cursor: pointer;
 	padding: 10px 12px; font-weight: 600; font-size: 1em; color: var(--color-main-text); }
 .members__caret { display: inline-block; width: 1em; color: var(--color-text-maxcontrast); }
@@ -443,6 +489,11 @@ export default {
 .members__input { width: 100%; }
 .sharee-results { position: absolute; z-index: 5; left: 0; right: 0; background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: 6px; list-style: none; margin: 2px 0 0; padding: 4px; max-height: 220px; overflow-y: auto;
 	li { padding: 6px 8px; cursor: pointer; border-radius: 4px; em { color: var(--color-text-maxcontrast); font-style: normal; font-size: .85em; } &:hover { background: var(--color-background-hover); } } }
+.consent { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-border);
+	&--only { margin-top: 0; padding-top: 0; border-top: none; } }
+.consent__hint { margin: 2px 0 0 4px; color: var(--color-text-maxcontrast); font-size: .85em; }
+.consent__sharers { margin: 8px 0 0 4px; font-size: .85em; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+	color: var(--color-text-maxcontrast); }
 .add-day { display: flex; gap: 8px; align-items: center; margin: 16px 0 24px; }
 .entry-card { border: 1px solid var(--color-border); border-radius: 10px;
 	padding: 16px; margin-bottom: 18px; background: var(--color-main-background); }
@@ -475,6 +526,9 @@ export default {
 	cursor: pointer; outline: 3px solid transparent;
 	img { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--color-background-dark); }
 	&.selected { outline-color: var(--color-primary-element); }
+	.picker__owner { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px;
+		background: rgba(0,0,0,.55); color: #fff; font-size: .72em; white-space: nowrap;
+		overflow: hidden; text-overflow: ellipsis; }
 	.picker__check { position: absolute; top: 4px; right: 4px; background: var(--color-primary-element);
 		color: var(--color-primary-element-text); border-radius: 50%; width: 22px; height: 22px;
 		display: flex; align-items: center; justify-content: center; font-size: 14px; } }

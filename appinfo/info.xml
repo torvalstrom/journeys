@@ -18,7 +18,7 @@ Automatically cluster your images into journeys (vacations/trips) and create alb
 - **🗂️ Album Creation:** Albums are created automatically for each journey
 - **⚙️ Customizable:** Control minimum cluster size, time gap, and distance thresholds
 - **🎥 Video Rendering:** Turn journey albums into MP4 highlight reels. Renders run as background jobs (the settings page returns instantly) and land in `Documents/Journeys Movies/`. Per-location subtitles fade in/out as the journey moves between places. Requires `ffmpeg` on the server.
-- **📔 Journals (travel diary):** Keep a hand-written travel diary in the new **Journeys** sidebar app: create a Journal, add a day entry (auto-filled with up to 20 photos spread across that day), write text, curate the photos and add a caption to each. Photos stay in capture-time order, so pictures added by a collaborator merge into the day's timeline where they were actually taken. Publish a Journal to a revocable public link — a mobile-friendly timeline with locations, a visited countries/cities overview and a cover photo. Share a Journal with other users or groups for full co-editing.
+- **📔 Journals (travel diary):** Keep a hand-written travel diary in the new **Journeys** sidebar app: create a Journal, add a day entry (auto-filled with up to 20 photos spread across that day), write text, curate the photos and add a caption to each. Photos stay in capture-time order, so pictures added by a collaborator merge into the day's timeline where they were actually taken. Publish a Journal to a revocable public link — a mobile-friendly timeline with locations, a visited countries/cities overview and a cover photo. Share a Journal with other users or groups for full co-editing — and each member can optionally let the others pick from their own photo library for the journal's dates.
 - **📚 Mobile-friendly journey browser:** Compact card list with year, month and location filters plus a `▶ Watch` shortcut to existing rendered videos — built for instances with many journeys.
 - **🧵 Smart Merging:** Adjacent clusters in the same country (within one week) are automatically stitched together, so multi-city road trips and long vacations with rest days stay as one journey
 - **🧹 Auto-cleanup of empty albums:** Journey albums whose photos you've all deleted are removed automatically on the next clustering run, so empty placeholders don't pile up. Manual albums are never touched.
@@ -39,6 +39,12 @@ Album titles are generated from the **resolved place name** and the **date range
 
 ]]></description>
   <changelog><![CDATA[
+  <h3>0.31.0 (2026-08-06)</h3>
+    <ul>
+      <li><b>Journals — shared photo libraries:</b> Any member of a shared journal can switch on <i>"Let the others pick from my photos"</i>. The other members' day picker then also shows that member's pictures, labelled with who they belong to, and they can be added to the journal like your own.</li>
+      <li><b>Scoped and revocable:</b> Sharing your library only exposes photos taken within the journal's date range, only to that journal's members, and only until you switch it off again. Pictures already added to the journal stay.</li>
+      <li><b>Journals editor:</b> The collaborators box is now visible to every member (that is where the switch lives). Adding and removing collaborators remains owner-only.</li>
+    </ul>
   <h3>0.30.0 (2026-08-06)</h3>
     <ul>
       <li><b>Journals:</b> Photos in a day entry are now kept in <b>capture-time order</b>, so pictures added by collaborators merge into the day's timeline where they were actually taken instead of being appended at the end. Existing entries are re-ordered by the update.</li>
@@ -455,7 +461,7 @@ Album titles are generated from the **resolved place name** and the **date range
   ]]></changelog>
   <licence>agpl</licence>
   <author mail="thrillfall@disroot.org">thrillfall</author>
-  <version>0.30.0</version>
+  <version>0.31.0</version>
   <namespace>Journeys</namespace>
   <category>integration</category>
   <category>multimedia</category>

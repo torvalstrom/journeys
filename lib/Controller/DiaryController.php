@@ -237,6 +237,53 @@ class DiaryController extends Controller {
         return new JSONResponse(['sharees' => $out]);
     }
 
+    /**
+     * Let this journal's other members pick from the calling user's own photo
+     * library, for the journal's date range. Self-service — a member sets only
+     * their own consent, never someone else's.
+     */
+    #[NoAdminRequired]
+    public function setLibraryConsent(int $id): JSONResponse {
+        $userId = $this->uid();
+        if ($userId === null) {
+            return $this->noUser();
+        }
+        $shared = filter_var($this->request->getParam('shared', false), FILTER_VALIDATE_BOOLEAN);
+        try {
+            $this->journalService->setLibraryConsent($userId, $id, $shared);
+        } catch (JournalNotFoundException $e) {
+            return $this->notFound();
+        }
+        return new JSONResponse([
+            'myLibraryShared' => $shared,
+            'libraryContributors' => $this->contributors($userId, $id),
+        ]);
+    }
+
+    /**
+     * Preview of a photo that is NOT (yet) attached to the journal, offered by a
+     * member who shared their library. Guarded by consent + the journal's date
+     * window; `journalPhoto` stays the endpoint for attached photos.
+     */
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
+    public function libraryPhoto(int $id, int $fileid) {
+        $userId = $this->uid();
+        if ($userId === null) {
+            return $this->noUser();
+        }
+        $journal = $this->journalService->getJournal($userId, $id);
+        if ($journal === null || !$journal->startDate || !$journal->endDate) {
+            return $this->notFound();
+        }
+        foreach ($this->journalService->libraryOwnersFor($userId, $id) as $owner) {
+            if ($this->photoFetcher->isImageInWindow($fileid, $owner, $journal->startDate, $journal->endDate)) {
+                return $this->photoResponder->serve([$owner], $fileid, 'thumb');
+            }
+        }
+        return $this->notFound();
+    }
+
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function members(int $id): JSONResponse {
@@ -404,6 +451,48 @@ class DiaryController extends Controller {
         return new JSONResponse(['photos' => $this->photoFetcher->fetchForDay($userId, $date)]);
     }
 
+    /**
+     * A day's photos for the journal's picker: the caller's own, plus those of
+     * every member who shared their library. Foreign photos are only offered for
+     * days inside the journal's date range.
+     */
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
+    public function journalDayPhotos(int $id): JSONResponse {
+        $userId = $this->uid();
+        if ($userId === null) {
+            return $this->noUser();
+        }
+        $journal = $this->journalService->getJournal($userId, $id);
+        if ($journal === null) {
+            return $this->notFound();
+        }
+        $date = (string)$this->request->getParam('date', '');
+        if ($date === '') {
+            return new JSONResponse(['error' => 'date is required'], 400);
+        }
+
+        $owners = [$userId];
+        $inWindow = $journal->startDate && $journal->endDate
+            && $date >= $journal->startDate && $date <= $journal->endDate;
+        if ($inWindow) {
+            $owners = $this->journalService->libraryOwnersFor($userId, $id);
+        }
+
+        $photos = [];
+        foreach ($this->photoFetcher->fetchForDayForUsers($owners, $date) as $photo) {
+            $owner = $photo['ownerUid'];
+            $photos[] = [
+                'fileid' => $photo['fileid'],
+                'datetaken' => $photo['datetaken'],
+                'ownerUid' => $owner,
+                'ownerLabel' => $this->displayName($owner),
+                'isMine' => $owner === $userId,
+            ];
+        }
+        return new JSONResponse(['photos' => $photos]);
+    }
+
     #[NoAdminRequired]
     #[NoCSRFRequired]
     public function libraryPhotos(): JSONResponse {
@@ -432,6 +521,20 @@ class DiaryController extends Controller {
 
     private function notFound(): JSONResponse {
         return new JSONResponse(['error' => 'Not found'], 404);
+    }
+
+    private function displayName(string $uid): string {
+        $user = $this->userManager->get($uid);
+        return $user ? $user->getDisplayName() : $uid;
+    }
+
+    /** @return array<int,array{uid:string,label:string,isMe:bool}> */
+    private function contributors(string $userId, int $journalId): array {
+        $out = [];
+        foreach ($this->journalService->listConsentingUsers($journalId) as $uid) {
+            $out[] = ['uid' => $uid, 'label' => $this->displayName($uid), 'isMe' => $uid === $userId];
+        }
+        return $out;
     }
 
     private function publicUrl(string $token): string {
@@ -489,6 +592,10 @@ class DiaryController extends Controller {
         ];
         if ($withEntries) {
             $data['entries'] = array_map([$this, 'serializeEntry'], $journal->entries);
+            if ($userId !== null) {
+                $data['myLibraryShared'] = $this->journalService->hasLibraryConsent($journal->id, $userId);
+                $data['libraryContributors'] = $this->contributors($userId, $journal->id);
+            }
         }
         return $data;
     }

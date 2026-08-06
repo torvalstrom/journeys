@@ -159,10 +159,12 @@ class JournalService {
                 ->where($qb->expr()->eq('journal_id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)));
             $qb->executeStatement();
 
-            $qb = $this->db->getQueryBuilder();
-            $qb->delete('journeys_journal_members')
-                ->where($qb->expr()->eq('journal_id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)));
-            $qb->executeStatement();
+            foreach (['journeys_journal_members', 'journeys_journal_consents'] as $table) {
+                $qb = $this->db->getQueryBuilder();
+                $qb->delete($table)
+                    ->where($qb->expr()->eq('journal_id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)));
+                $qb->executeStatement();
+            }
 
             $qb = $this->db->getQueryBuilder();
             $qb->delete('journeys_journals')
@@ -297,6 +299,11 @@ class JournalService {
             ->andWhere($qb->expr()->eq('principal_id', $qb->createNamedParameter($userId)));
         $qb->executeStatement();
 
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete('journeys_journal_consents')
+            ->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $qb->executeStatement();
+
         // 3) Journals they own, with their entries / photos / members.
         $qb = $this->db->getQueryBuilder();
         $qb->select('id')->from('journeys_journals')
@@ -304,7 +311,7 @@ class JournalService {
         $journalIds = array_map(static fn(array $r) => (int)$r['id'], $qb->executeQuery()->fetchAll());
         foreach ($journalIds as $journalId) {
             $this->deletePhotosForEntries($this->entryIdsForJournal($journalId));
-            foreach (['journeys_journal_entries', 'journeys_journal_members'] as $table) {
+            foreach (['journeys_journal_entries', 'journeys_journal_members', 'journeys_journal_consents'] as $table) {
                 $d = $this->db->getQueryBuilder();
                 $d->delete($table)->where($d->expr()->eq('journal_id', $d->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)));
                 $d->executeStatement();
@@ -313,6 +320,67 @@ class JournalService {
             $d->delete('journeys_journals')->where($d->expr()->eq('id', $d->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)));
             $d->executeStatement();
         }
+    }
+
+    // -- library consent -------------------------------------------------------
+
+    /**
+     * Let (or stop letting) the journal's other members pick from this user's own
+     * photo library. Self-service: a member can only set their own consent.
+     * @throws JournalNotFoundException
+     */
+    public function setLibraryConsent(string $userId, int $journalId, bool $shared): bool {
+        $this->requireAccess($userId, $journalId);
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete('journeys_journal_consents')
+            ->where($qb->expr()->eq('journal_id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $qb->executeStatement();
+        if (!$shared) {
+            return true;
+        }
+        $qb = $this->db->getQueryBuilder();
+        $qb->insert('journeys_journal_consents')->values([
+            'journal_id' => $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT),
+            'user_id' => $qb->createNamedParameter($userId),
+            'created_at' => $qb->createNamedParameter($this->now()),
+        ]);
+        $qb->executeStatement();
+        return true;
+    }
+
+    public function hasLibraryConsent(int $journalId, string $userId): bool {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id')->from('journeys_journal_consents')
+            ->where($qb->expr()->eq('journal_id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->setMaxResults(1);
+        return $qb->executeQuery()->fetch() !== false;
+    }
+
+    /** @return string[] uids who let this journal's members use their library */
+    public function listConsentingUsers(int $journalId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('user_id')->from('journeys_journal_consents')
+            ->where($qb->expr()->eq('journal_id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)))
+            ->orderBy('user_id', 'ASC');
+        return array_map(static fn(array $r) => (string)$r['user_id'], $qb->executeQuery()->fetchAll());
+    }
+
+    /**
+     * Whose libraries $userId may draw from for this journal: themselves, plus
+     * every member who consented and still has access.
+     * @return string[]
+     */
+    public function libraryOwnersFor(string $userId, int $journalId): array {
+        $journal = $this->requireAccess($userId, $journalId);
+        $owners = [$userId];
+        foreach ($this->listConsentingUsers($journalId) as $uid) {
+            if ($uid !== $userId && $this->canAccess($uid, $journal)) {
+                $owners[] = $uid;
+            }
+        }
+        return $owners;
     }
 
     /** @return int[] journal ids the user is a member of (direct or via group) */
@@ -494,15 +562,16 @@ class JournalService {
      * @return EntryPhoto[]
      */
     public function setEntryPhotos(string $userId, int $entryId, array $items): array {
-        $this->requireEntryJournalId($userId, $entryId);
+        $journalId = $this->requireEntryJournalId($userId, $entryId);
+        $journal = $this->loadJournal($journalId);
         $normalized = EntryPhoto::normalizeSelection($items);
         $takenAt = $this->photoFetcher->takenAtForFileIds(array_map(static fn(array $p) => $p['fileid'], $normalized));
         $normalized = EntryPhoto::sortChronologically($normalized, $takenAt);
 
         // Preserve the original owner of photos already on the entry (so a
-        // collaborator's edit doesn't re-attribute others' photos), and only
-        // allow NEWLY-added fileids that belong to the acting user (you can
-        // remove anyone's photo, but only add your own).
+        // collaborator's edit doesn't re-attribute others' photos). Anyone may
+        // remove anyone's photo; adding is limited to your own files plus the
+        // libraries of members who consented (see canAttach).
         $existingOwners = [];
         foreach ($this->getEntryPhotos($entryId) as $p) {
             $existingOwners[$p->fileid] = $p->ownerUid ?? $userId;
@@ -519,10 +588,11 @@ class JournalService {
                     // stale owner_uid), falling back to the stored value.
                     $owner = $this->fileHomeOwner($fid) ?? ($existingOwners[$fid] ?? $userId);
                 } else {
-                    if (!$this->userOwnsFile($userId, $fid)) {
-                        continue; // can't add a file you don't own
+                    $owner = $this->fileHomeOwner($fid);
+                    if (!$this->canAttach($userId, $journal, $fid, $owner)) {
+                        continue;
                     }
-                    $owner = $this->fileHomeOwner($fid) ?? $userId;
+                    $owner = $owner ?? $userId;
                 }
                 $qb = $this->db->getQueryBuilder();
                 $qb->insert('journeys_entry_photos')->values([
@@ -541,6 +611,28 @@ class JournalService {
             throw $e;
         }
         return $this->getEntryPhotos($entryId);
+    }
+
+    /**
+     * A file may be attached if the acting user owns it, or if it belongs to a
+     * member who consented to share their library with this journal — and then
+     * only within the journal's date window, which is the whole exposure bound
+     * of that consent.
+     */
+    private function canAttach(string $userId, ?Journal $journal, int $fileid, ?string $fileOwner): bool {
+        if ($this->userOwnsFile($userId, $fileid)) {
+            return true;
+        }
+        if ($journal === null || $fileOwner === null || $fileOwner === $userId) {
+            return false;
+        }
+        if (!$journal->startDate || !$journal->endDate) {
+            return false;
+        }
+        if (!$this->canAccess($fileOwner, $journal) || !$this->hasLibraryConsent($journal->id, $fileOwner)) {
+            return false;
+        }
+        return $this->photoFetcher->isImageInWindow($fileid, $fileOwner, $journal->startDate, $journal->endDate);
     }
 
     /** The home-storage owner uid of a fileid (home::<uid>), or null. */

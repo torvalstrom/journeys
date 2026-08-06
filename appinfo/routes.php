@@ -72,6 +72,11 @@ return [
         ['name' => 'diary#addMember', 'url' => '/diary/journals/{id}/members', 'verb' => 'POST'],
         ['name' => 'diary#removeMember', 'url' => '/diary/journals/{id}/members/{type}/{principal}', 'verb' => 'DELETE'],
 
+        // --- Travel diary: shared photo libraries (Increment 8) ---
+        ['name' => 'diary#setLibraryConsent', 'url' => '/diary/journals/{id}/library-consent', 'verb' => 'POST'],
+        ['name' => 'diary#journalDayPhotos', 'url' => '/diary/journals/{id}/day-photos', 'verb' => 'GET'],
+        ['name' => 'diary#libraryPhoto', 'url' => '/diary/journals/{id}/library-photo/{fileid}', 'verb' => 'GET'],
+
         // --- Travel diary: public share page (Increment 3) ---
         ['name' => 'publicDiary#show', 'url' => '/s/{token}', 'verb' => 'GET'],
         ['name' => 'publicDiary#photo', 'url' => '/s/{token}/photo/{fileid}', 'verb' => 'GET'],

@@ -76,6 +76,55 @@ class DiaryPhotoFetcher {
     }
 
     /**
+     * A day's photos across several users' libraries, each row tagged with its
+     * owner. Used by the picker once members have consented to share.
+     *
+     * @param string[] $users
+     * @return array<int,array{fileid:int,ownerUid:string,path:string,datetaken:string,lat:?string,lon:?string,w:?int,h:?int}>
+     */
+    public function fetchForDayForUsers(array $users, string $date): array {
+        $out = [];
+        foreach (array_values(array_unique($users)) as $user) {
+            foreach ($this->fetchForDay($user, $date) as $photo) {
+                $photo['ownerUid'] = $user;
+                $out[] = $photo;
+            }
+        }
+        usort($out, static fn(array $a, array $b) => [$a['datetaken'], $a['fileid']] <=> [$b['datetaken'], $b['fileid']]);
+        return $out;
+    }
+
+    /**
+     * True if the fileid is an indexed image in $ownerUid's home storage whose
+     * capture date falls inside the inclusive day window. This is the exposure
+     * bound of a library consent, so it is enforced on every foreign read.
+     */
+    public function isImageInWindow(int $fileid, string $ownerUid, string $fromDate, string $toDate): bool {
+        $from = $this->normalizeDate($fromDate);
+        $to = $this->normalizeDate($toDate);
+        if ($fileid <= 0 || $from === null || $to === null) {
+            return false;
+        }
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        $sql = "
+            SELECT 1
+            FROM oc_memories m
+            JOIN oc_filecache f ON m.fileid = f.fileid
+            JOIN oc_storages s ON f.storage = s.numeric_id
+            JOIN oc_mimetypes mt ON f.mimetype = mt.id
+            WHERE m.fileid = ? AND s.id = ? AND f.path LIKE 'files/%'
+              AND mt.mimetype LIKE 'image/%'
+              AND m.datetaken >= ? AND m.datetaken <= ?
+            LIMIT 1
+        ";
+        $stmt = $this->db->prepare($sql);
+        $result = $stmt->execute([$fileid, 'home::' . $ownerUid, $from . ' 00:00:00', $to . ' 23:59:59']);
+        return $result ? $result->fetch() !== false : false;
+    }
+
+    /**
      * Capture time per fileid from the Memories index, for merge sorting an
      * entry's photos chronologically across contributors.
      *
