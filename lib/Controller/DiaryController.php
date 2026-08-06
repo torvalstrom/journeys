@@ -522,6 +522,7 @@ class DiaryController extends Controller {
             'fileid' => $photo->fileid,
             'sortOrder' => $photo->sortOrder,
             'caption' => $photo->caption,
+            'takenAt' => $photo->takenAt,
         ];
     }
 }

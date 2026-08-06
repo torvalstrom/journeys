@@ -14,6 +14,7 @@ class EntryPhoto {
         public int $sortOrder = 0,
         public ?string $caption = null,
         public ?string $ownerUid = null,
+        public ?string $takenAt = null,
     ) {}
 
     public static function fromRow(array $row): self {
@@ -24,6 +25,7 @@ class EntryPhoto {
             isset($row['sort_order']) ? (int)$row['sort_order'] : 0,
             isset($row['caption']) ? (string)$row['caption'] : null,
             isset($row['owner_uid']) && $row['owner_uid'] !== null ? (string)$row['owner_uid'] : null,
+            isset($row['taken_at']) && $row['taken_at'] !== null ? (string)$row['taken_at'] : null,
         );
     }
 
@@ -61,6 +63,44 @@ class EntryPhoto {
                 'caption' => $caption,
                 'sort_order' => count($out),
             ];
+        }
+        return $out;
+    }
+
+    /**
+     * Merge sort a normalized selection into capture-time order and re-assign a
+     * dense sort_order. This is what interleaves photos added by different
+     * collaborators into one chronological day instead of appending each
+     * contributor's batch after the previous one.
+     *
+     * Photos Memories has no capture time for keep their submitted relative
+     * order and go last (they carry no timeline position, so guessing one would
+     * scatter them through the day). Equal timestamps fall back to fileid, so
+     * the result is deterministic. Pure — unit tested.
+     *
+     * @param array<int,array{fileid:int,caption:?string,sort_order:int}> $items
+     * @param array<int,?string> $takenAtByFileid 'Y-m-d H:i:s' per fileid, missing/null = undated
+     * @return array<int,array{fileid:int,caption:?string,sort_order:int,taken_at:?string}>
+     */
+    public static function sortChronologically(array $items, array $takenAtByFileid): array {
+        $timed = [];
+        $undated = [];
+        foreach ($items as $item) {
+            $takenAt = $takenAtByFileid[$item['fileid']] ?? null;
+            $takenAt = ($takenAt === null || trim((string)$takenAt) === '') ? null : (string)$takenAt;
+            $item['taken_at'] = $takenAt;
+            if ($takenAt === null) {
+                $undated[] = $item;
+            } else {
+                $timed[] = $item;
+            }
+        }
+        usort($timed, static fn(array $a, array $b) => [$a['taken_at'], $a['fileid']] <=> [$b['taken_at'], $b['fileid']]);
+
+        $out = [];
+        foreach (array_merge($timed, $undated) as $item) {
+            $item['sort_order'] = count($out);
+            $out[] = $item;
         }
         return $out;
     }

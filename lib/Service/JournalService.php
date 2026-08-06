@@ -24,6 +24,7 @@ class JournalService {
         private IUserManager $userManager,
         private IGroupManager $groupManager,
         private IRootFolder $rootFolder,
+        private DiaryPhotoFetcher $photoFetcher,
     ) {}
 
     // -- journals ----------------------------------------------------------------
@@ -484,12 +485,19 @@ class JournalService {
      * Replace an entry's photo selection with the normalized $items
      * (bare fileids or ['fileid'=>..,'caption'=>..]). Returns the stored rows.
      *
+     * The stored order is NOT the submitted order: rows are merge sorted by
+     * capture time (see EntryPhoto::sortChronologically), so photos contributed
+     * by different collaborators interleave into one chronological day instead of
+     * each batch being appended after the last.
+     *
      * @param array<int|array<string,mixed>> $items
      * @return EntryPhoto[]
      */
     public function setEntryPhotos(string $userId, int $entryId, array $items): array {
         $this->requireEntryJournalId($userId, $entryId);
         $normalized = EntryPhoto::normalizeSelection($items);
+        $takenAt = $this->photoFetcher->takenAtForFileIds(array_map(static fn(array $p) => $p['fileid'], $normalized));
+        $normalized = EntryPhoto::sortChronologically($normalized, $takenAt);
 
         // Preserve the original owner of photos already on the entry (so a
         // collaborator's edit doesn't re-attribute others' photos), and only
@@ -523,6 +531,7 @@ class JournalService {
                     'owner_uid' => $qb->createNamedParameter($owner),
                     'sort_order' => $qb->createNamedParameter($order++, IQueryBuilder::PARAM_INT),
                     'caption' => $qb->createNamedParameter($photo['caption']),
+                    'taken_at' => $qb->createNamedParameter($photo['taken_at'] ?? null),
                 ]);
                 $qb->executeStatement();
             }

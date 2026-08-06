@@ -40,12 +40,17 @@ class DiaryPhotoFetcher {
         }
 
         $storageId = 'home::' . $user;
+        // Images only: Memories indexes videos too, and a bare video (e.g. a GCam
+        // *.TS.mp4 / *.LS.mp4 motion clip sitting next to its still) has no image
+        // preview, so seeding one produces an unloadable dark tile in the entry.
         $sql = "
             SELECT m.fileid, m.datetaken, m.lat, m.lon, m.w, m.h, f.path
             FROM oc_memories m
             JOIN oc_filecache f ON m.fileid = f.fileid
             JOIN oc_storages s ON f.storage = s.numeric_id
+            JOIN oc_mimetypes mt ON f.mimetype = mt.id
             WHERE s.id = ? AND f.path LIKE 'files/%' AND m.datetaken IS NOT NULL
+              AND mt.mimetype LIKE 'image/%'
               AND f.path NOT LIKE 'files/Documents/Journeys Movies/%'
               AND m.datetaken >= ? AND m.datetaken <= ?
             ORDER BY m.datetaken ASC, m.fileid ASC
@@ -66,6 +71,36 @@ class DiaryPhotoFetcher {
                 'w' => isset($row['w']) ? (int)$row['w'] : null,
                 'h' => isset($row['h']) ? (int)$row['h'] : null,
             ];
+        }
+        return $out;
+    }
+
+    /**
+     * Capture time per fileid from the Memories index, for merge sorting an
+     * entry's photos chronologically across contributors.
+     *
+     * Deliberately not storage-scoped: an entry mixes photos from several users'
+     * libraries, so scoping to one home storage would lose the other owners'
+     * timestamps. It is only ever called for fileids that already passed the
+     * entry-membership / ownership checks, and it returns no file content.
+     *
+     * @param int[] $fileids
+     * @return array<int,?string> fileid => 'Y-m-d H:i:s' (absent when unindexed)
+     */
+    public function takenAtForFileIds(array $fileids): array {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $fileids), static fn(int $id) => $id > 0)));
+        if (!$ids) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql = "SELECT fileid, datetaken FROM oc_memories WHERE fileid IN ({$placeholders}) AND datetaken IS NOT NULL";
+        $stmt = $this->db->prepare($sql);
+        $result = $stmt->execute($ids);
+        $rows = $result ? $result->fetchAll() : [];
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int)$row['fileid']] = (string)$row['datetaken'];
         }
         return $out;
     }

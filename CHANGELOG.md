@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.30.0] - 2026-08-06
+### Changed
+- Journals: an entry's photos are stored in **capture-time order** — `setEntryPhotos` merge sorts the whole selection by `datetaken` (new `taken_at` column, cached from the Memories index) instead of submission order, so a collaborator's photos interleave into the day's timeline instead of being appended after everyone else's. Photos Memories has no capture time for keep their submitted order and go last.
+- Journals editor: dropped the manual ‹ › photo reorder arrows (they fought the automatic order).
+### Fixed
+- Journals: the day auto-seed and photo pickers no longer offer video files. `oc_memories` indexes videos too, so GCam motion clips (`*.TS.mp4`, `*.LS.mp4`) sitting next to their stills were attached as entry photos, 404'd on preview and rendered as black tiles. Already-attached videos are left alone (removing them silently on the next save would be data loss); remove them with ✕.
+### Added
+- DB migration `Version0501Date20260805`: `journeys_entry_photos.taken_at` + `(entry_id, taken_at)` index, backfilled from `oc_memories.datetaken` with `sort_order` re-derived, so existing entries become chronological too.
+
 ## [0.29.0] - 2026-08-05
 ### Changed
 - Journals public page: the timeline defaults to **newest day first** (the oldest/newest toggle still flips it), matching the editor.

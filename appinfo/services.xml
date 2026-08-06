@@ -28,6 +28,7 @@
       <argument type="service" id="OCP\IUserManager"/>
       <argument type="service" id="OCP\IGroupManager"/>
       <argument type="service" id="OCP\Files\IRootFolder"/>
+      <argument type="service" id="OCA\Journeys\Service\DiaryPhotoFetcher"/>
     </service>
     <service id="OCA\Journeys\Service\DiaryPhotoFetcher">
       <argument type="service" id="OCP\IDBConnection"/>

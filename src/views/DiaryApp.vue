@@ -109,10 +109,10 @@
 						<span v-if="photo.caption" class="photo-thumb__caption" :title="photo.caption">{{ photo.caption }}</span>
 						<button class="photo-thumb__cover" :class="{ active: currentJournal.coverFileid === photo.fileid }"
 							title="Set as cover" @click.stop="setCover(photo.fileid)">★</button>
+						<!-- No manual reordering: photos are kept in capture-time order by
+						     the server so every contributor's shots interleave by time. -->
 						<div class="photo-thumb__actions" @click.stop>
-							<button :disabled="idx === 0" title="left" @click="movePhoto(entry, idx, -1)">‹</button>
 							<button title="remove" @click="removePhoto(entry, idx)">✕</button>
-							<button :disabled="idx === entry.photos.length - 1" title="right" @click="movePhoto(entry, idx, 1)">›</button>
 						</div>
 					</div>
 				</div>
@@ -367,13 +367,6 @@ export default {
 			}
 			this.caption.saving = false
 		},
-		movePhoto(entry, idx, dir) {
-			const j = idx + dir
-			if (j < 0 || j >= entry.photos.length) return
-			const arr = entry.photos
-			const tmp = arr[idx]; this.$set(arr, idx, arr[j]); this.$set(arr, j, tmp)
-			this.persistPhotos(entry)
-		},
 		removePhoto(entry, idx) {
 			entry.photos.splice(idx, 1)
 			this.persistPhotos(entry)
@@ -406,6 +399,8 @@ export default {
 			// keep existing captions for photos that survive this save
 			const capByFile = {}
 			entry.photos.forEach(p => { if (p.caption) capByFile[p.fileid] = p.caption })
+			// Submission order is irrelevant — the server merge sorts the whole
+			// selection by capture time before storing it.
 			const photos = [...keep, ...selected].map(fileid => ({ fileid, caption: capByFile[fileid] || null }))
 			const { data } = await axios.put(API + '/entries/' + entry.id + '/photos', { photos })
 			entry.photos = data.photos
@@ -471,7 +466,7 @@ export default {
 		color: #fff; cursor: pointer; font-size: 15px; border-radius: 4px; padding: 1px 4px;
 		&.active { color: #ffce3d; } }
 	&__actions { position: absolute; bottom: 0; left: 0; right: 0; display: flex;
-		justify-content: space-between; background: rgba(0,0,0,.45);
+		align-items: center; justify-content: flex-end; background: rgba(0,0,0,.45);
 		button { background: none; border: none; color: #fff; cursor: pointer; font-size: 16px; padding: 2px 6px;
 			&:disabled { opacity: .3; cursor: default; } } } }
 .picker { padding: 12px; }
