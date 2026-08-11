@@ -66,6 +66,9 @@ return [
         ['name' => 'diary#share', 'url' => '/diary/journals/{id}/share', 'verb' => 'POST'],
         ['name' => 'diary#unshare', 'url' => '/diary/journals/{id}/unshare', 'verb' => 'POST'],
 
+        // --- Travel diary: completion + stats (Increment 10) ---
+        ['name' => 'diary#setCompleted', 'url' => '/diary/journals/{id}/completed', 'verb' => 'POST'],
+
         // --- Travel diary: collaboration (Increment 5) ---
         ['name' => 'diary#sharees', 'url' => '/diary/sharees', 'verb' => 'GET'],
         ['name' => 'diary#members', 'url' => '/diary/journals/{id}/members', 'verb' => 'GET'],

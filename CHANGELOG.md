@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.32.0] - 2026-08-06
+### Added
+- Journals: **completion flag** — the owner can mark a journal as finished (and reopen it). `completed_at` on the journal row; owner-only, like publishing. Deliberately presentational: a completed journal stays fully editable.
+- Journals: **travel stats** — days, countries, distance travelled and photo count, shown in the journal list, the editor and the public page. `days` is the calendar span from the first to the last entry (not the entry count); `distanceKm` sums great-circle hops over the chronologically ordered geolocated entries and is omitted entirely below two points, so a journal without GPS shows no distance rather than "0 km".
+- New pure `JournalStats` service (unit tested) plus `POST /diary/journals/{id}/completed`. The journal list computes stats from one grouped entry query and one photo-count query — no query per row.
+- DB migration `Version0503Date20260806`: `journeys_journals.completed_at`.
+### Fixed
+- Journals public page: the distance used hardcoded German thousands separators; it is locale-neutral now.
+
 ## [0.31.0] - 2026-08-06
 ### Added
 - Journals: **shared photo libraries**. Any member of a journal can switch on "Let the others pick from my photos"; from then on the other members' day picker also lists that member's photos and can attach them. Consent is per journal, self-service (you can only set your own), and revocable — revoking hides the library again but keeps photos already attached.

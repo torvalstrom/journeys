@@ -8,6 +8,7 @@ use OCA\Journeys\Model\JournalEntry;
 use OCA\Journeys\Service\DiaryPhotoFetcher;
 use OCA\Journeys\Service\EntryLocationResolver;
 use OCA\Journeys\Service\JournalService;
+use OCA\Journeys\Service\JournalStats;
 use OCA\Journeys\Service\PhotoPreviewResponder;
 use OCA\Journeys\Service\PhotoSpread;
 use OCP\AppFramework\Controller;
@@ -79,8 +80,17 @@ class DiaryController extends Controller {
         if ($userId === null) {
             return $this->noUser();
         }
-        $journals = array_map(fn($t) => $this->serializeJournal($t, false, $userId), $this->journalService->listJournals($userId));
-        return new JSONResponse(['journals' => $journals]);
+        $journals = $this->journalService->listJournals($userId);
+        $ids = array_map(static fn(Journal $j) => $j->id, $journals);
+        $rows = $this->journalService->statsRowsForJournals($ids);
+        $counts = $this->journalService->photoCountsForJournals($ids);
+        $out = [];
+        foreach ($journals as $journal) {
+            $data = $this->serializeJournal($journal, false, $userId);
+            $data['stats'] = JournalStats::compute($rows[$journal->id] ?? [], $counts[$journal->id] ?? 0);
+            $out[] = $data;
+        }
+        return new JSONResponse(['journals' => $out]);
     }
 
     #[NoAdminRequired]
@@ -179,6 +189,22 @@ class DiaryController extends Controller {
             return $this->notFound();
         }
         return new JSONResponse(['unshared' => true]);
+    }
+
+    /** Mark the journal finished, or reopen it. Owner-only. */
+    #[NoAdminRequired]
+    public function setCompleted(int $id): JSONResponse {
+        $userId = $this->uid();
+        if ($userId === null) {
+            return $this->noUser();
+        }
+        $completed = filter_var($this->request->getParam('completed', true), FILTER_VALIDATE_BOOLEAN);
+        try {
+            $this->journalService->setCompleted($userId, $id, $completed);
+        } catch (JournalNotFoundException $e) {
+            return $this->notFound();
+        }
+        return new JSONResponse(['journal' => $this->serializeJournal($this->journalService->getJournalWithEntries($userId, $id), true, $userId)]);
     }
 
     // -- collaboration --------------------------------------------------------
@@ -587,11 +613,17 @@ class DiaryController extends Controller {
             'startDate' => $journal->startDate,
             'endDate' => $journal->endDate,
             'isPublic' => $journal->isPublic(),
+            'isCompleted' => $journal->isCompleted(),
+            'completedAt' => $journal->completedAt,
             'isOwner' => $userId !== null && $journal->userId === $userId,
             'shareUrl' => $journal->isPublic() ? $this->publicUrl($journal->publicToken) : null,
         ];
         if ($withEntries) {
             $data['entries'] = array_map([$this, 'serializeEntry'], $journal->entries);
+            $data['stats'] = JournalStats::compute(
+                JournalStats::rowsFromEntries($journal->entries),
+                array_sum(array_map(static fn(JournalEntry $e) => count($e->photos), $journal->entries))
+            );
             if ($userId !== null) {
                 $data['myLibraryShared'] = $this->journalService->hasLibraryConsent($journal->id, $userId);
                 $data['libraryContributors'] = $this->contributors($userId, $journal->id);

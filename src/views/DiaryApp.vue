@@ -18,7 +18,13 @@
 			<ul v-else class="journal-list">
 				<li v-for="journal in journals" :key="journal.id"
 					class="journal-row" @click="openJournal(journal.id)">
-					<span class="journal-row__title">{{ journal.title }}</span>
+					<span class="journal-row__main">
+						<span class="journal-row__title">
+							<span v-if="journal.isCompleted" class="completed-badge" :title="t('journeys', 'Completed')">✓</span>
+							{{ journal.title }}
+						</span>
+						<span v-if="statsLine(journal.stats)" class="journal-row__stats">{{ statsLine(journal.stats) }}</span>
+					</span>
 					<span v-if="journal.startDate" class="journal-row__dates">{{ journal.startDate }}<span v-if="journal.endDate"> – {{ journal.endDate }}</span></span>
 				</li>
 			</ul>
@@ -42,6 +48,22 @@
 					<NcButton type="error" @click="deleteJournal">{{ t('journeys', 'Delete journal') }}</NcButton>
 				</template>
 			</header>
+
+			<div v-if="currentJournal.isOwner || statsLine(currentJournal.stats)" class="journal-stats">
+				<div class="journal-stats__figures">
+					<span v-if="currentJournal.isCompleted" class="completed-badge completed-badge--pill">
+						✓ {{ t('journeys', 'Completed') }}
+					</span>
+					<span v-if="statsLine(currentJournal.stats)">{{ statsLine(currentJournal.stats) }}</span>
+					<span v-if="visitedLine" class="journal-stats__places">{{ visitedLine }}</span>
+					<span v-if="!statsLine(currentJournal.stats)" class="journal-stats__empty">
+						{{ t('journeys', 'Add a day to start counting.') }}
+					</span>
+				</div>
+				<NcButton v-if="currentJournal.isOwner" type="tertiary" @click="toggleCompleted">
+					{{ currentJournal.isCompleted ? t('journeys', 'Reopen') : t('journeys', 'Mark as completed') }}
+				</NcButton>
+			</div>
 
 			<div class="members">
 				<button class="members__toggle" @click="membersOpen = !membersOpen">
@@ -236,6 +258,11 @@ export default {
 				? t('journeys', 'Add today')
 				: t('journeys', 'Add day')
 		},
+		visitedLine() {
+			const s = this.currentJournal?.stats
+			if (!s || !s.countries?.length) return ''
+			return s.countries.join(' · ')
+		},
 		otherContributors() {
 			return (this.currentJournal?.libraryContributors ?? []).filter(c => !c.isMe)
 		},
@@ -257,6 +284,24 @@ export default {
 			return photo.isMine
 				? this.previewUrl(photo.fileid)
 				: generateUrl('/apps/journeys/diary/journals/' + this.currentJournal.id + '/library-photo/' + photo.fileid)
+		},
+		statsLine(stats) {
+			if (!stats) return ''
+			const parts = []
+			if (stats.days) parts.push(n('journeys', '%n day', '%n days', stats.days))
+			if (stats.countries?.length) parts.push(n('journeys', '%n country', '%n countries', stats.countries.length))
+			if (stats.distanceKm) parts.push(this.t('journeys', '{km} km').replace('{km}', stats.distanceKm.toLocaleString()))
+			if (stats.photoCount) parts.push(n('journeys', '%n photo', '%n photos', stats.photoCount))
+			return parts.join(' · ')
+		},
+		async toggleCompleted() {
+			const completed = !this.currentJournal.isCompleted
+			try {
+				const { data } = await axios.post(API + '/journals/' + this.currentJournal.id + '/completed', { completed })
+				this.currentJournal = data.journal
+			} catch (e) {
+				showError(this.t('journeys', 'Could not update the journal'))
+			}
 		},
 		async setLibraryConsent(shared) {
 			this.$set(this.currentJournal, 'myLibraryShared', shared)
@@ -469,8 +514,21 @@ export default {
 	padding: 14px 16px; border: 1px solid var(--color-border); border-radius: 8px;
 	margin-bottom: 8px; cursor: pointer;
 	&:hover { background: var(--color-background-hover); }
+	&__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	&__title { font-weight: 600; }
-	&__dates { color: var(--color-text-maxcontrast); font-size: 0.9em; } }
+	&__stats { color: var(--color-text-maxcontrast); font-size: 0.85em; }
+	&__dates { color: var(--color-text-maxcontrast); font-size: 0.9em; white-space: nowrap; } }
+.completed-badge { color: var(--color-success, #2d7d46); font-weight: 700;
+	&--pill { background: var(--color-success, #2d7d46); color: var(--color-primary-element-text, #fff);
+		border-radius: 12px; padding: 2px 10px; font-size: .85em; } }
+/* Its own surface: the app background is a colored gradient, on which
+   --color-text-maxcontrast is barely legible. */
+.journal-stats { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+	background: var(--color-main-background); border: 1px solid var(--color-border);
+	border-radius: 8px; padding: 8px 12px; margin: 0 0 16px; font-size: .95em;
+	&__figures { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+	&__places { color: var(--color-text-maxcontrast); font-style: italic; }
+	&__empty { color: var(--color-text-maxcontrast); } }
 .journal-title-input { flex: 1; font-size: 1.3em; font-weight: 600; border: none;
 	border-bottom: 2px solid transparent; background: transparent;
 	&:focus { border-bottom-color: var(--color-primary-element); outline: none; } }

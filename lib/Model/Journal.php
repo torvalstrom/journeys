@@ -20,6 +20,7 @@ class Journal {
         public ?string $publicToken = null,
         public ?string $createdAt = null,
         public ?string $updatedAt = null,
+        public ?string $completedAt = null,
     ) {}
 
     public static function fromRow(array $row): self {
@@ -34,11 +35,16 @@ class Journal {
             $row['public_token'] ?? null,
             $row['created_at'] ?? null,
             $row['updated_at'] ?? null,
+            $row['completed_at'] ?? null,
         );
     }
 
     public function isPublic(): bool {
         return $this->publicToken !== null && $this->publicToken !== '';
+    }
+
+    public function isCompleted(): bool {
+        return $this->completedAt !== null && $this->completedAt !== '';
     }
 
     /**

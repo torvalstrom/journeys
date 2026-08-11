@@ -196,6 +196,75 @@ class JournalService {
         return true;
     }
 
+    /**
+     * Mark a journal finished (or reopen it). Owner-only, like publishing.
+     * Purely presentational — a completed journal stays fully editable.
+     * @throws JournalNotFoundException
+     */
+    public function setCompleted(string $userId, int $journalId, bool $completed): ?string {
+        $this->requireOwner($userId, $journalId);
+        $completedAt = $completed ? $this->now() : null;
+        $qb = $this->db->getQueryBuilder();
+        $qb->update('journeys_journals')
+            ->set('completed_at', $qb->createNamedParameter($completedAt))
+            ->set('updated_at', $qb->createNamedParameter($this->now()))
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($journalId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+        $qb->executeStatement();
+        return $completedAt;
+    }
+
+    /**
+     * Stats input for several journals in one round trip, so the journal list
+     * doesn't run a query per row.
+     *
+     * @param int[] $journalIds
+     * @return array<int,array<int,array{date:string,lat:?float,lon:?float,country:?string,city:?string}>>
+     */
+    public function statsRowsForJournals(array $journalIds): array {
+        if (!$journalIds) {
+            return [];
+        }
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('journal_id', 'entry_date', 'lat', 'lon', 'country', 'city', 'place_label')
+            ->from('journeys_journal_entries')
+            ->where($qb->expr()->in('journal_id', $qb->createNamedParameter($journalIds, IQueryBuilder::PARAM_INT_ARRAY)))
+            ->orderBy('entry_date', 'ASC');
+        $out = array_fill_keys($journalIds, []);
+        foreach ($qb->executeQuery()->fetchAll() as $row) {
+            $out[(int)$row['journal_id']][] = [
+                'date' => (string)$row['entry_date'],
+                'lat' => $row['lat'] !== null ? (float)$row['lat'] : null,
+                'lon' => $row['lon'] !== null ? (float)$row['lon'] : null,
+                'country' => $row['country'] ?? null,
+                'city' => $row['city'] ?: ($row['place_label'] ?: null),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * @param int[] $journalIds
+     * @return array<int,int> journal id => attached photo count
+     */
+    public function photoCountsForJournals(array $journalIds): array {
+        if (!$journalIds) {
+            return [];
+        }
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('e.journal_id')
+            ->selectAlias($qb->func()->count('p.id'), 'n')
+            ->from('journeys_journal_entries', 'e')
+            ->innerJoin('e', 'journeys_entry_photos', 'p', $qb->expr()->eq('p.entry_id', 'e.id'))
+            ->where($qb->expr()->in('e.journal_id', $qb->createNamedParameter($journalIds, IQueryBuilder::PARAM_INT_ARRAY)))
+            ->groupBy('e.journal_id');
+        $out = array_fill_keys($journalIds, 0);
+        foreach ($qb->executeQuery()->fetchAll() as $row) {
+            $out[(int)$row['journal_id']] = (int)$row['n'];
+        }
+        return $out;
+    }
+
     /** Public lookup by share token (no user scoping). Null if not shared/found. */
     public function getJournalByToken(string $token): ?Journal {
         if ($token === '') {

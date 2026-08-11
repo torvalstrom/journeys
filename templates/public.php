@@ -12,6 +12,31 @@
 			<p class="jd-pub-desc"><?php p($_['description']); ?></p>
 		<?php endif; ?>
 
+		<?php
+		$stats = $_['stats'] ?? [];
+		$figures = [];
+		if (!empty($stats['days'])) {
+			$figures[] = $l->n('%n day', '%n days', (int)$stats['days']);
+		}
+		if (!empty($stats['countries'])) {
+			$figures[] = $l->n('%n country', '%n countries', count($stats['countries']));
+		}
+		if (!empty($stats['distanceKm'])) {
+			$figures[] = $l->t('%s km', [number_format((int)$stats['distanceKm'])]);
+		}
+		if (!empty($stats['photoCount'])) {
+			$figures[] = $l->n('%n photo', '%n photos', (int)$stats['photoCount']);
+		}
+		?>
+		<?php if ($figures): ?>
+			<p class="jd-stats">
+				<?php if (!empty($_['completed'])): ?>
+					<span class="jd-completed">✓ <?php p($l->t('Completed')); ?></span>
+				<?php endif; ?>
+				<?php p(implode(' · ', $figures)); ?>
+			</p>
+		<?php endif; ?>
+
 		<?php if (!empty($_['overview'])): ?>
 			<div class="jd-overview">
 				<?php foreach ($_['overview'] as $c): ?>
@@ -139,6 +164,9 @@ body > footer { display: none; }
 .jd-pub-header h1 { font-size: 2em; margin: 0 0 8px; }
 .jd-pub-desc { color: var(--color-text-maxcontrast, #767676); margin: 0 0 16px; }
 .jd-overview { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; }
+.jd-stats { margin: 0 0 14px; color: var(--color-main-text, #222); font-size: .95em; }
+.jd-completed { background: var(--color-success, #2d7d46); color: #fff; border-radius: 12px;
+	padding: 2px 10px; margin-right: 8px; font-size: .85em; font-weight: 600; }
 /* Static route map: a server-rendered OSM basemap with the route + numbered
    stops baked in, served as a plain <img> (no client JS, no CSP changes). */
 .jd-map { margin: 0 0 32px; border-radius: 12px; overflow: hidden; background: var(--color-background-dark, #ededed); }

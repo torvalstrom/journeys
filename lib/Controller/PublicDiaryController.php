@@ -4,6 +4,7 @@ namespace OCA\Journeys\Controller;
 use OCA\Journeys\Model\JournalEntry;
 use OCA\Journeys\Service\PhotoPreviewResponder;
 use OCA\Journeys\Service\JournalService;
+use OCA\Journeys\Service\JournalStats;
 use OCA\Journeys\Service\StaticRouteMapService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -87,6 +88,11 @@ class PublicDiaryController extends Controller {
             'entries' => $viewEntries,
             'cover' => $cover,
             'mapUrl' => $mapUrl,
+            'stats' => JournalStats::compute(
+                JournalStats::rowsFromEntries($entries),
+                array_sum(array_map(static fn(JournalEntry $e) => count($e->photos), $entries))
+            ),
+            'completed' => $journal->isCompleted(),
         ], TemplateResponse::RENDER_AS_PUBLIC);
     }
 
